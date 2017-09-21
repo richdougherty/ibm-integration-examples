@@ -30,7 +30,7 @@ class MQSender(applicationLifecycle: ApplicationLifecycle, materializer: Materia
     queueConnectionFactory.setChannel("DEV.APP.SVRCONN")
     queueConnectionFactory.setTransportType(CommonConstants.WMQ_CM_BINDINGS_THEN_CLIENT)
 
-    val jmsSink: Sink[String, NotUsed] = JmsSink(
+    val jmsSink: Sink[String, NotUsed] = JmsSink.textSink(
       JmsSinkSettings(queueConnectionFactory).withQueue("DEV.QUEUE.1").withCredential(Credentials("app", ""))
     )
     val queueSource: Source[String, SourceQueueWithComplete[String]] = Source.queue[String](0, OverflowStrategy.backpressure)
