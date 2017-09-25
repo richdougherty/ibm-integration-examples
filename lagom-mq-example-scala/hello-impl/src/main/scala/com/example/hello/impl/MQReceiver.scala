@@ -4,6 +4,7 @@ import javax.jms.{Message, TextMessage}
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props, Status}
 import akka.cluster.singleton.{ClusterSingletonManager, ClusterSingletonManagerSettings}
+import akka.event.slf4j.Logger
 import akka.pattern.pipe
 import akka.stream.Materializer
 import akka.stream.alpakka.jms.{Credentials, JmsSourceSettings}
@@ -13,20 +14,28 @@ import akka.{Done, NotUsed}
 import com.ibm.mq.jms.MQQueueConnectionFactory
 import com.ibm.msg.client.wmq.common.CommonConstants
 import com.lightbend.lagom.scaladsl.persistence.PersistentEntityRegistry
+import org.slf4j.LoggerFactory
 import play.api.libs.json.{JsError, JsSuccess, Json}
 
 import scala.concurrent.Future
 import scala.util.control.NonFatal
 
-class MQReceiver(actorSystem: ActorSystem, persistentEntityRegistry: PersistentEntityRegistry, materializer: Materializer) {
+class MQReceiver(
+    actorSystem: ActorSystem,
+    persistentEntityRegistry: PersistentEntityRegistry,
+    materializer: Materializer) {
+
+  private val logger = LoggerFactory.getLogger(getClass)
 
   def processMessage(message: Message): Future[Done] = {
+    logger.info(s"Processing message received over MQ.")
     try {
       val json = Json.parse(message.asInstanceOf[TextMessage].getText)
       Json.fromJson[UseGreetingMessageForId](json) match {
         case JsSuccess(UseGreetingMessageForId(id, greeting), _) =>
-          println(s"MQReceiver.listening / parse JsSuccess")
+          logger.info(s"Message parsed as UseGreetingMessageForId($id, $greeting).")
           val ref = persistentEntityRegistry.refFor[HelloEntity](id) // TODO: Get id from message
+          logger.info(s"Sending message to HelloEntity ref.")
           ref.ask(UseGreetingMessage(greeting))
         case error: JsError =>
           Future.failed(new Exception(s"Failed to parse JavaScript: $error"))
