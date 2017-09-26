@@ -168,7 +168,7 @@ object MQListenerActor {
 
     private val logger = LoggerFactory.getLogger(getClass)
 
-    logger.info(s"Starting SingletonMQListenerActor as a cluster singleton")
+    logger.info(s"Starting ${classOf[MQListenerActor].getSimpleName} as a cluster singleton")
 
     private def sourceSettings: JmsSourceSettings = {
       val queueConnectionFactory = new MQQueueConnectionFactory()
