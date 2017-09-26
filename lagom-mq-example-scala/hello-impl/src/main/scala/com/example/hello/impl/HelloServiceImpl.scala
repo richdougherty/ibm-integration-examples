@@ -13,7 +13,7 @@ import scala.concurrent.ExecutionContext
 /**
   * Implementation of the HelloService.
   */
-class HelloServiceImpl(persistentEntityRegistry: PersistentEntityRegistry, mQSender: MQSender, ec: ExecutionContext) extends HelloService {
+class HelloServiceImpl(persistentEntityRegistry: PersistentEntityRegistry, mqSender: MQSender, ec: ExecutionContext) extends HelloService {
 
   override def hello(id: String) = ServiceCall { _ =>
     // Look up the Hello entity for the given ID.
@@ -25,26 +25,8 @@ class HelloServiceImpl(persistentEntityRegistry: PersistentEntityRegistry, mQSen
 
   override def useGreeting(id: String) = ServiceCall { request =>
     // TODO: Don't complete until we receive acknowledgement?
-    mQSender.send(UseGreetingMessageForId(id, request.message)).map(_ => Done)(ec) // TODO: Better ExecutionContext
-
-    // // Look up the Hello entity for the given ID.
-    // val ref = persistentEntityRegistry.refFor[HelloEntity](id)
-    //
-    // // Tell the entity to use the greeting message specified.
-    // ref.ask(UseGreetingMessage(request.message))
+    mqSender.sendGreetingUpdate(id, request.message).map(_ => Done)(ec) // TODO: Better ExecutionContext
   }
-
-
-  //
-  //  override def useGreeting(id: String) = ServiceCall { request =>
-  //    // Look up the Hello entity for the given ID.
-  //    val ref = persistentEntityRegistry.refFor[HelloEntity](id)
-  //
-  //    // Tell the entity to use the greeting message specified.
-  //    ref.ask(UseGreetingMessage(request.message))
-  //  }
-
-
   override def greetingsTopic(): Topic[api.GreetingMessageChanged] =
     TopicProducer.singleStreamWithOffset {
       fromOffset =>

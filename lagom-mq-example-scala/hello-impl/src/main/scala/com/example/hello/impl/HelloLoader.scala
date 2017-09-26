@@ -9,6 +9,7 @@ import play.api.libs.ws.ahc.AhcWSComponents
 import com.example.hello.api.HelloService
 import com.lightbend.lagom.scaladsl.broker.kafka.LagomKafkaComponents
 import com.softwaremill.macwire._
+import play.api.Configuration
 
 class HelloLoader extends LagomApplicationLoader {
 
@@ -29,8 +30,6 @@ abstract class HelloApplication(context: LagomApplicationContext)
     with LagomKafkaComponents
     with AhcWSComponents {
 
-  lazy val mqSender = wire[MQSender]
-
   // Bind the service that this server provides
   override lazy val lagomServer = serverFor[HelloService](wire[HelloServiceImpl])
 
@@ -39,8 +38,13 @@ abstract class HelloApplication(context: LagomApplicationContext)
 
   // Register the Hello persistent entity
   persistentEntityRegistry.register(wire[HelloEntity])
-  //mqSender.send("Hello")
+
+  lazy val mqConfiguration = wireWith[Configuration,MQConfiguration](MQConfiguration.parse)
+
+  lazy val mqSender: MQSender = wire[MQSenderImpl]
+
+  lazy val mqHandler: MQHandler = wire[MQHandlerImpl]
 
   // Listen to MQ
-  wire[MQReceiver]
+  wire[MQListenerActor.SingletonInitializer]
 }

@@ -2,8 +2,8 @@ package com.example.hello.impl
 
 import play.api.libs.json.{Format, Json}
 
-case class UseGreetingMessageForId(id: String, message: String)
+case class UpdateGreetingMessage(id: String, message: String)
 
-object UseGreetingMessageForId {
-  implicit val format: Format[UseGreetingMessageForId] = Json.format
+object UpdateGreetingMessage {
+  implicit val format: Format[UpdateGreetingMessage] = Json.format
 }
