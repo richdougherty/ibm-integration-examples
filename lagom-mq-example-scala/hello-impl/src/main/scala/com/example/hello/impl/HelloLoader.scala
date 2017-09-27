@@ -43,7 +43,7 @@ abstract class HelloApplication(context: LagomApplicationContext)
 
   lazy val mqSender: MQSender = wire[MQSenderImpl]
 
-  lazy val mqHandler: MQHandler = wire[MQHandlerImpl]
+  lazy val mqHandler: MQReceiveHandler = wire[UpdatePersistentEntityMQReceiveHandler]
 
   // Listen to MQ
   wire[MQListenerActor.SingletonInitializer]

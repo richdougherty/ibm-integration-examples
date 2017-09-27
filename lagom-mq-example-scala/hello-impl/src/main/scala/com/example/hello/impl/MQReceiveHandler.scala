@@ -7,12 +7,20 @@ import org.slf4j.LoggerFactory
 import scala.concurrent.Future
 import scala.util.control.NonFatal
 
-trait MQHandler {
+/**
+ * A handler for messages that come in over MQ.
+ */
+trait MQReceiveHandler {
   def handleGreetingUpdate(id: String, newMessage: String): Future[Done]
 }
 
-class MQHandlerImpl(
-    persistentEntityRegistry: PersistentEntityRegistry) extends MQHandler {
+/**
+ * Handles received MQ messages by updating a persistent entity.
+ *
+ * @param persistentEntityRegistry
+ */
+class UpdatePersistentEntityMQReceiveHandler(
+    persistentEntityRegistry: PersistentEntityRegistry) extends MQReceiveHandler {
   private val logger = LoggerFactory.getLogger(getClass)
   override def handleGreetingUpdate(id: String, newMessage: String): Future[Done] = {
     try {
