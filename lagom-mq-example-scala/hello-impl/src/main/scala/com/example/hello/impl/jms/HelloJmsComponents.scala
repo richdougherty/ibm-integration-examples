@@ -1,11 +1,11 @@
-package com.example.hello.impl
+package com.example.hello.impl.jms
 
 import akka.stream.scaladsl.{Sink, Source}
-import com.example.hello.impl.HelloJmsSinkFactory.RunSink
-import com.example.hello.impl.HelloJmsSourceFactory.RunSource
+import com.example.hello.impl.jms.HelloJmsSinkFactory.RunSink
+import com.example.hello.impl.jms.HelloJmsSourceFactory.RunSource
 
 /**
- * These components are implemented by [[com.example.hello.impl.mq.MQHelloJmsComponents]]
+ * These components are implemented by [[com.example.hello.impl.jms.MQHelloJmsComponents]]
  * in production, but it's helpful to abstract them out so we can mock
  * the for testing.
  */
@@ -31,7 +31,7 @@ trait HelloJmsSourceFactory {
    * Create a new JMS source. When called, this method should call [[RunSource.apply()]]
    * to actually run the [[Source]].
    */
-  def createJmsSource(run: RunSource): Unit
+  def createJmsSource[T](run: RunSource[T]): T
 }
 
 object HelloJmsSourceFactory {
@@ -41,10 +41,10 @@ object HelloJmsSourceFactory {
    * stream, materialize the stream and return the source's materialized value.
    *
    * We use this trait instead of a plain function because we want to have
-   * the type parameter on the apply method instead of on the trait.
+   * the `Mat` type parameter on the apply method instead of on the trait.
    */
-  trait RunSource {
-    def apply[T](source: Source[String, T]): T
+  trait RunSource[T] {
+    def apply[Mat](source: Source[String, Mat]): (Mat, T)
   }
 
 
@@ -59,7 +59,7 @@ trait HelloJmsSinkFactory {
    * Create a new JMS sink. When called, this method should call [[RunSink.apply()]]
    * to actually run the [[Sink]].
    */
-  def createJmsSink(run: RunSink): Unit
+  def createJmsSink[T](run: RunSink[T]): T
 }
 
 object HelloJmsSinkFactory {
@@ -69,10 +69,10 @@ object HelloJmsSinkFactory {
    * stream, materialize the stream and return the sink's materialized value.
    *
    * We use this trait instead of a plain function because we want to have
-   * the type parameter on the apply method instead of on the trait.
+   * the `Mat` type parameter on the apply method instead of on the trait.
    */
-  trait RunSink {
-    def apply[T](sink: Sink[String, T]): T
+  trait RunSink[T] {
+    def apply[Mat](sink: Sink[String, Mat]): (Mat, T)
   }
 
 }

@@ -1,7 +1,7 @@
 package com.example.hello.impl
 
 import com.example.hello.api.HelloService
-import com.example.hello.impl.mq.MQHelloJmsComponents
+import com.example.hello.impl.jms.{HelloJmsComponents, HelloJmsReceiverActor, HelloJmsSender, MQHelloJmsComponents}
 import com.lightbend.lagom.scaladsl.api.ServiceLocator
 import com.lightbend.lagom.scaladsl.api.ServiceLocator.NoServiceLocator
 import com.lightbend.lagom.scaladsl.broker.kafka.LagomKafkaComponents
@@ -40,10 +40,8 @@ abstract class HelloApplication(context: LagomApplicationContext)
   // Register the Hello persistent entity
   persistentEntityRegistry.register(wire[HelloEntity])
 
-  lazy val jmsUpdateSender = wire[JmsUpdateSender]
-
-  lazy val jmsUpdateReceiver = wire[JmsUpdateReceiver]
+  lazy val helloJmsSender = wire[HelloJmsSender]
 
   // Ask MacWire to initialize the JmsListenerActor as a cluster singleton
-  wireWith(JmsReceiverActor.startWithClusterSingletonManager _)
+  wireWith(HelloJmsReceiverActor.startWithClusterSingletonManager _)
 }

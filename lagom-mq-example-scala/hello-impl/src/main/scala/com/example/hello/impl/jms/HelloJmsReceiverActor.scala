@@ -1,4 +1,4 @@
-package com.example.hello.impl
+package com.example.hello.impl.jms
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.cluster.singleton.{ClusterSingletonManager, ClusterSingletonManagerSettings}
@@ -6,7 +6,9 @@ import akka.pattern.pipe
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import akka.{Done, NotUsed}
-import com.example.hello.impl.HelloJmsSourceFactory.RunSource
+import com.example.hello.impl._
+import com.example.hello.impl.jms.HelloJmsSourceFactory.RunSource
+import com.lightbend.lagom.scaladsl.persistence.PersistentEntityRegistry
 import org.slf4j.LoggerFactory
 import play.api.libs.json.{JsError, JsSuccess, JsValue, Json}
 
@@ -14,19 +16,18 @@ import scala.concurrent.Future
 import scala.util.control.NonFatal
 
 /**
- * This actor is responsible for listening for JMS messages
- * and invoking an [[JmsUpdateReceiver]].
+ * This actor is responsible for listening for JMS messages and processing
+ * them.
  *
  * @param jmsSourceFactory Used to create the source for sending JMS messages.
- * @param messageHandler This will handle each message received.
  * @param materializer This is used to materialize the stream.
  */
-class JmsReceiverActor(
+class HelloJmsReceiverActor(
     jmsSourceFactory: HelloJmsSourceFactory,
-    messageHandler: JmsUpdateReceiver,
-    materializer: Materializer) extends Actor {
+    persistentEntityRegistry: PersistentEntityRegistry)(
+    implicit materializer: Materializer) extends Actor {
 
-  import JmsReceiverActor._
+  import HelloJmsReceiverActor._
 
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -40,8 +41,8 @@ class JmsReceiverActor(
   override def preStart(): Unit = {
     logger.info("preStart called: creating MQ JmsSource")
 
-    jmsSourceFactory.createJmsSource(new RunSource {
-      override def apply[T](source: Source[String, T]): T = {
+    jmsSourceFactory.createJmsSource(new RunSource[Unit] {
+      override def apply[Mat](source: Source[String, Mat]): (Mat, Unit) = {
         logger.info("preStart called: creating Sink.actorRefWithAck")
 
         val actorSink: Sink[String, NotUsed] = Sink.actorRefWithAck[String](self,
@@ -52,7 +53,8 @@ class JmsReceiverActor(
         )
 
         logger.info("preStart called: creating stream from JmsSource to Sink.actorRefWithAck")
-        source.to(actorSink).run()(materializer)
+        val sourceMat: Mat = source.to(actorSink).run()
+        (sourceMat, ())
       }
     })
   }
@@ -171,7 +173,7 @@ class JmsReceiverActor(
   /**
    * Handle a message that is received. This decodes the raw JMS message string,
    * getting JSON [[JsValue]], decoding it to an [[UpdateGreetingMessage]]
-   * then calling the [[JmsUpdateReceiver]].
+   * then updating the persistent entity.
    */
   private def handleMessage(messageString: String): Future[Done] = {
     try {
@@ -179,8 +181,9 @@ class JmsReceiverActor(
       val updateJson: JsValue = Json.parse(messageString)
       Json.fromJson[UpdateGreetingMessage](updateJson) match {
         case JsSuccess(UpdateGreetingMessage(id, newMessage), _) =>
-          logger.info(s"Message parsed as UseGreetingMessageForId($id, $newMessage).")
-          messageHandler.handleGreetingUpdate(id, newMessage)
+          logger.info(s"Updating entity '$id' with message '$newMessage'.")
+          val ref = persistentEntityRegistry.refFor[HelloEntity](id)
+          ref.ask(UseGreetingMessage(newMessage))
         case error: JsError =>
           throw new Exception(s"Failed to parse JavaScript: $error")
       }
@@ -192,52 +195,52 @@ class JmsReceiverActor(
   }
 }
 
-object JmsReceiverActor {
+object HelloJmsReceiverActor {
 
   /**
-   * This message is sent by the [[ClusterSingletonManager]] to the [[JmsReceiverActor]]
+   * This message is sent by the [[ClusterSingletonManager]] to the [[HelloJmsReceiverActor]]
    * when it is time to terminate.
    */
   case object ClusterSingletonTerminate
 
   /**
-   * This message is sent by [[Sink.actorRefWithAck()]] to the [[JmsReceiverActor]]
+   * This message is sent by [[Sink.actorRefWithAck()]] to the [[HelloJmsReceiverActor]]
    * when the stream is being initialized.
    */
   case object StreamInit
 
   /**
-   * This message is a reply from the [[JmsReceiverActor]] to acknowledge a message
+   * This message is a reply from the [[HelloJmsReceiverActor]] to acknowledge a message
    * sent by [[Sink.actorRefWithAck()]]. This message is used to control backpressure;
    * the [[Sink]] will wait until it gets acknowledgement before proceeding.
    */
   case object StreamAck
 
   /**
-   * This message is sent by [[Sink.actorRefWithAck()]] to the [[JmsReceiverActor]]
+   * This message is sent by [[Sink.actorRefWithAck()]] to the [[HelloJmsReceiverActor]]
    * when the stream is completed successfully.
    */
   case object StreamComplete
 
   /**
-   * This message is sent by [[Sink.actorRefWithAck()]] to the [[JmsReceiverActor]]
+   * This message is sent by [[Sink.actorRefWithAck()]] to the [[HelloJmsReceiverActor]]
    * when the stream is completed with failure.
    */
   case class StreamFailure(t: Throwable)
 
   /**
    * Creates a ClusterSingletonManager actor and asks it to manage the
-   * [[JmsReceiverActor]] as a cluster singleton.
+   * [[HelloJmsReceiverActor]] as a cluster singleton.
    */
   def startWithClusterSingletonManager(
       jmsSourceFactory: HelloJmsSourceFactory,
-      messageHandler: JmsUpdateReceiver,
+      persistentEntityRegistry: PersistentEntityRegistry,
       actorSystem: ActorSystem,
       materializer: Materializer) {
 
     val logger = LoggerFactory.getLogger(getClass)
 
-    logger.info(s"Starting ClusterSingletonManager to run ${classOf[JmsReceiverActor].getSimpleName} as a cluster singleton")
+    logger.info(s"Starting ClusterSingletonManager to run ${classOf[HelloJmsReceiverActor].getSimpleName} as a cluster singleton")
 
     // Start a ClusterSingletonManager actor. This actor will communicate with
     // its peers on the cluster and decide on one cluster member to run the
@@ -245,9 +248,9 @@ object JmsReceiverActor {
     // the node running the MQListenerActor may change.
     actorSystem.actorOf(
       ClusterSingletonManager.props(
-        singletonProps = Props(classOf[JmsReceiverActor], jmsSourceFactory, messageHandler, materializer),
+        singletonProps = Props(classOf[HelloJmsReceiverActor], jmsSourceFactory, persistentEntityRegistry, materializer),
         terminationMessage = ClusterSingletonTerminate,
         settings = ClusterSingletonManagerSettings(actorSystem)),
-      name = "mq-listener-cluster-singleton-manager")
+      name = "hello-jms-receiver-cluster-singleton-manager")
   }
 }

@@ -1,9 +1,9 @@
-package com.example.hello.impl
+package com.example.hello.impl.jms
 
 import akka.Done
 import akka.stream.scaladsl.{Keep, Sink, Source, SourceQueueWithComplete}
 import akka.stream.{Materializer, OverflowStrategy, QueueOfferResult}
-import com.example.hello.impl.HelloJmsSinkFactory.RunSink
+import com.example.hello.impl.jms.HelloJmsSinkFactory.RunSink
 import org.slf4j.LoggerFactory
 import play.api.inject.ApplicationLifecycle
 import play.api.libs.json.{JsValue, Json}
@@ -18,7 +18,7 @@ import scala.concurrent.{ExecutionContext, Future}
  * @param materializer Used to create streams.
  * @param ec Used to run futures.
  */
-class JmsUpdateSender(
+class HelloJmsSender(
     helloJmsSinkFactory: HelloJmsSinkFactory,
     applicationLifecycle: ApplicationLifecycle,
     materializer: Materializer)(
@@ -28,19 +28,21 @@ class JmsUpdateSender(
 
   logger.info(s"Starting ${getClass.getName}")
 
+  /**
+   * We use this queue to offer new messages to the JMS sink.
+   */
   private val sendQueue: SourceQueueWithComplete[String] = {
-    @volatile var tmp: SourceQueueWithComplete[String] = null
     logger.info("Starting JmsSink")
-    helloJmsSinkFactory.createJmsSink(new RunSink {
-      override def apply[T](sink: Sink[String, T]): T = {
+
+    // Create the JMS sink and attach it to a stream. The stream
+    // is fed by a SourceQueueWithComplete.
+    helloJmsSinkFactory.createJmsSink(new RunSink[SourceQueueWithComplete[String]] {
+      override def apply[Mat](sink: Sink[String, Mat]): (Mat, SourceQueueWithComplete[String]) = {
         val queueSource: Source[String, SourceQueueWithComplete[String]] = Source.queue[String](0, OverflowStrategy.backpressure)
-        val (sourceQueue, result): (SourceQueueWithComplete[String], T) =
-          queueSource.toMat(sink)(Keep.both).run()(materializer)
-        tmp = sourceQueue
-        result
+        val (queue, mat) = queueSource.toMat(sink)(Keep.both).run()(materializer)
+        (mat, queue)
       }
     })
-    tmp
   }
 
   applicationLifecycle.addStopHook { () =>

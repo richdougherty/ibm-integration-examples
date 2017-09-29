@@ -3,6 +3,7 @@ package com.example.hello.impl
 import akka.Done
 import com.example.hello.api
 import com.example.hello.api.HelloService
+import com.example.hello.impl.jms.HelloJmsSender
 import com.lightbend.lagom.scaladsl.api.ServiceCall
 import com.lightbend.lagom.scaladsl.api.broker.Topic
 import com.lightbend.lagom.scaladsl.broker.TopicProducer
@@ -15,7 +16,7 @@ import scala.concurrent.ExecutionContext
   */
 class HelloServiceImpl(
     persistentEntityRegistry: PersistentEntityRegistry,
-    mqSender: JmsUpdateSender)(
+    mqSender: HelloJmsSender)(
     implicit ec: ExecutionContext) extends HelloService {
 
   override def hello(id: String) = ServiceCall { _ =>

@@ -1,34 +1,35 @@
 [IBM MQ](http://www.ibm.com/software/products/en/ibm-mq) is messaging middleware
-that can be used to integrate applications and business data across multiple platforms.
+that can be used to connect applications and business data across diverse platforms.
 [Lagom](https://www.lagomframework.com/) applications can conveniently integrate with
-IBM MQ with the [Alpakka JMS connector](http://developer.lightbend.com/docs/alpakka/current/jms.html).
+IBM MQ by using the [Alpakka JMS connector](http://developer.lightbend.com/docs/alpakka/current/jms.html).
 
 This example project implements a simple "hello, world" service that can store
-custom per-user greetings. Changes to greetings are sent to a remote IBM MQ message
-queue and received by a single listener running in the Lagom cluster
-[Akka Cluster Singleton](http://doc.akka.io/docs/akka/current/scala/cluster-singleton.html). 
+custom per-user greetings. Greetings are stored using Lagom's [Persistent Entities](https://www.lagomframework.com/documentation/1.4.x/scala/ES_CQRS.html).
+Changes to greetings are sent over IBM MQ before being processed.
 
-Greetings are accessed and changed over HTTP using
-a pair of [Lagom Services](https://www.lagomframework.com/documentation/1.4.x/scala/ServiceDescriptors.html).
+For simplicity, this service implements both sending, receiving and processing
+messages greeting update messages within a single service. In practice, MQ
+message queues would often be used to integrate separate services, with one
+service sending messages and another service receiving and processing the
+messages.
 
-Greetings are read from a Lagom Persistent Entity. Greetings are written to the
-same entity, but we do this via IBM MQ in order to demonstrate usage.
-When a request to change a greeting arrives we create a message and send it via
-MQ to a remote message queue. This message will be received by another part of our
-application, which processes messages and which runs as an a [Akka Cluster Singleton](http://doc.akka.io/docs/akka/current/scala/cluster-singleton.html).
-This singleton routes the update to the Lagom Persistent Entity.
+Lagom applications can be run as a cluster. In this demonstration application, every node in
+the cluster can send MQ messages, but only a single node will receive MQ messages.
+Using a single node for receiving messages is beneficial because it simplifies issues of
+ordering when processing messages. The complicated details about how to choose a single node
+for reading and how to handle node failure and migration are handled automatically by
+[Akka's Cluster Singleton](http://doc.akka.io/docs/akka/current/scala/cluster-singleton.html)
+functionality.
 
 ## Table of Contents
 
 1.  [Prerequisites](#prerequisites)
-2.  [Set up Db2](#set-up-db2)
-3.  [Create the `HELLO` database](#create-the-hello-database)
+2.  [Set up IBM MQ](#set-up-ibm-mq)
 3.  [Download and set up the Lagom service](#download-and-set-up-the-lagom-service)
-4.  [Download and install the Db2 JDBC driver](#download-and-install-the-db2-jdbc-driver)
+4.  [Download and install the IBM MQ driver](#download-and-install-the-ibm-mq-jdbc-driver)
 5.  [Start the Lagom service](#start-the-lagom-service)
 6.  [Test the Lagom service](#test-the-lagom-service)
-7.  [Stop the Lagom service](#stop-the-lagom-service)
-8.  [Next steps](#next-steps)
+7.  [Stop the Lagom service](#stop-the-lagom-service-and-docker)
 
 ## Prerequisites
 
@@ -37,7 +38,7 @@ To build and run this example, you need to have the following installed:
 - [git](https://git-scm.com/)
 - [Java SE 8 JDK](http://www.oracle.com/technetwork/java/javase/overview/index.html)
 - [Maven 3.2.1+](https://maven.apache.org/) to build and run the Lagom project (3.5.0 recommended)
-- Docker XXXXXX needs URL
+- [Docker](https://www.docker.com/) to run the IBM MQ server
 
 ## Start IBM MQ Docker image
 
@@ -74,49 +75,69 @@ Follow these steps to get a local copy of this project. You can supply the crede
     ```
 2.  Change into the root directory for this example:
     ```
-    cd lagom-mq-example
+    cd lagom-mq-example-scala
     ```
 
 ## Download and install the MQ client driver
 
-To build and run the Lagom service, you will need to make the MQ client library available to Maven:
+To build and run the Lagom service, you will need to make the MQ client library available
+in your build.
 
-- If your organization has an internal Maven artifact repository that already hosts the Db2 JDBC driver, you can use this.
-  You might need to change the `groupId`, `artifactId`, and `version` for the dependency in this project's top-level
-  `pom.xml` file to match the values used in your repository.
-
-- Otherwise, download the [Db2 JDBC Driver](http://www-01.ibm.com/support/docview.wss?uid=swg21363866) (`db2jcc4.jar`) version 4.23.42 from IBM to your current directory. Then, run the following command to install it to your local Maven repository:
-
-  1. Go to [IBM's download page for MQ 9.0.0.1](http://ibm.biz/mq9001redistclients).
-  
-  2. Click on the link _9.0.0.1-IBM-MQC-Redist-Java_.
-
-  3. You may be asked to log in to IBM. If needed, you can create a free IBMid by following the link to _Create an IBMId_.
-  
-  4. Agree to the license agreement.
-  
-  5. Click on the link _9.0.0.1-IBM-MQC-Redist-Java.zip (20.8 MB)_.
-  
-  6. Extract the MQ client JAR files.
-
-     ```
-     $ jar xf 9.0.0.1-IBM-MQC-Redist-Java.zip java/lib/{com.ibm.mq.allclient.jar,jms.jar}
-     $ mvn install:install-file -Dfile=java/lib/com.ibm.mq.allclient.jar -Dversion=9.0.0.1 -DgroupId=com.ibm.mq -DartifactId=mq-allclient.jar -Dpackaging=jar
-     $ mvn install:install-file -Dfile=java/lib/jms.jar -Dversion=2.0 -DgroupId=com.ibm.mq -DartifactId=jms-api.jar -Dpackaging=jar
-     ```
-
-1. Install Docker.
-2. In one terminal, run IBM's demonstration MQ Docker image:
-
-3. In a second terminal, use sbt to run the this application.
+1. Go to [IBM's download page for MQ 9.0.0.1](http://ibm.biz/mq9001redistclients).
+2. Click on the link _9.0.0.1-IBM-MQC-Redist-Java_.
+3. You may be asked to log in to IBM. If needed, you can create a free account.
+4. Agree to the license agreement.
+5. Click on the link _9.0.0.1-IBM-MQC-Redist-Java.zip (20.8 MB)_.
+6. Go to the root directory of the `lagom-mq-example-scala` project.
+6. Extract the MQ client JAR files and copy them into the `mq-client/lib` directory
    ```
-   $ sbt runAll
+   $ jar xf 9.0.0.1-IBM-MQC-Redist-Java.zip java/lib/{com.ibm.mq.allclient.jar,jms.jar}
+   $ cp java/lib/* mq-client/lib
+   $ rm -ri java/lib
    ```
-4. In a third terminal, access the application using curl or your web browser:
-   ```
-   $ curl http://localhost:9000/api/hello/World
-   Hello, World!
-   $ curl -H "Content-Type: application/json" -X POST -d '{"message":"Hola"}' http://localhost:9000/api/hello/World
-   $ curl http://localhost:9000/api/hello/World
-   Hola, World!
-   ```
+
+## Start the Lagom service
+
+From the `lagom-mq-example-scala` directory run:
+
+```
+sbt runAll
+```
+
+Once the service has started you'll see a message like:
+
+```
+(Service started, press enter to stop and go back to the console...)
+```
+
+## Test the Lagom service
+
+Now that the service is running you can interact with it via HTTP.
+
+For example:
+
+```
+$ curl http://localhost:9000/api/hello/World
+Hello, World!
+$ curl -H "Content-Type: application/json" -X POST -d '{"message":"Hi"}' http://localhost:9000/api/hello/World
+$ curl http://localhost:9000/api/hello/World
+Hi, World!
+```
+
+While testing, the Lagom service will log messages to the console
+explaining what it's doing. For example:
+
+```
+[info] c.e.h.i.HelloJmsSender - Sending greeting update to 'World' with message 'Hi'.
+[info] c.e.h.i.HelloJmsSender - Encoded JMS message as {"id":"World","message":"Hi"}
+[info] c.e.h.i.HelloJmsReceiverActor - Received message: processing
+[info] c.e.h.i.HelloJmsReceiverActor - Received JMS message: {"id":"World","message":"Hi"}
+[info] c.e.h.i.HelloJmsReceiverActor - Updating entity 'World' with message 'Hi'.
+[info] c.e.h.i.HelloJmsReceiverActor - Message processing finished: waiting for next message
+```
+
+## Stop the Lagom service and Docker
+
+To stop the Lagom service, press `Enter` in the terminal.
+
+To stop the Docker MQ container, type `Control-C` in its terminal.
