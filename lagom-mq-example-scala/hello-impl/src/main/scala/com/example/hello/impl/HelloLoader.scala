@@ -40,8 +40,9 @@ abstract class HelloApplication(context: LagomApplicationContext)
   // Register the Hello persistent entity
   persistentEntityRegistry.register(wire[HelloEntity])
 
+  // This component handles the details of sending messages over JMS
   lazy val helloJmsSender = wire[HelloJmsSender]
 
-  // Ask MacWire to initialize the JmsListenerActor as a cluster singleton
+  // Start the actor which receives and processes JMS messages
   wireWith(HelloJmsReceiverActor.startWithClusterSingletonManager _)
 }
