@@ -1,14 +1,9 @@
 package com.example.hello.impl
 
-import akka.stream.alpakka.jms.scaladsl.JmsSink
-import akka.stream.alpakka.jms.{Credentials, JmsSinkSettings}
+import akka.Done
 import akka.stream.scaladsl.{Keep, Sink, Source, SourceQueueWithComplete}
 import akka.stream.{Materializer, OverflowStrategy, QueueOfferResult}
-import akka.{Done, NotUsed}
-import com.example.hello.impl.HelloJmsComponents.RunSink
-import com.example.hello.impl.mq.MQConfiguration
-import com.ibm.mq.jms.MQQueueConnectionFactory
-import com.ibm.msg.client.wmq.common.CommonConstants
+import com.example.hello.impl.HelloJmsSinkFactory.RunSink
 import org.slf4j.LoggerFactory
 import play.api.inject.ApplicationLifecycle
 import play.api.libs.json.{JsValue, Json}
@@ -16,9 +11,9 @@ import play.api.libs.json.{JsValue, Json}
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
- * Sends a greeting update over MQ.
+ * Sends a greeting update over JMS.
  *
- * @param mqConfiguration The configuration to use when connecting to MQ.
+ * @param helloJmsSinkFactory Used to create the JMS connection to send to.
  * @param applicationLifecycle Used to ensure MQ shuts down when the application stops.
  * @param materializer Used to create streams.
  * @param ec Used to run futures.
@@ -26,8 +21,8 @@ import scala.concurrent.{ExecutionContext, Future}
 class JmsUpdateSender(
     helloJmsSinkFactory: HelloJmsSinkFactory,
     applicationLifecycle: ApplicationLifecycle,
-    materializer: Materializer,
-    ec: ExecutionContext) {
+    materializer: Materializer)(
+    implicit ec: ExecutionContext) {
 
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -67,8 +62,5 @@ class JmsUpdateSender(
       case QueueOfferResult.Dropped => throw new Exception("MQSender dropped the message")
     }(ec)
   }
-
-  // TODO: support byte messages
-  // TODO: transactional semantics?
 
 }

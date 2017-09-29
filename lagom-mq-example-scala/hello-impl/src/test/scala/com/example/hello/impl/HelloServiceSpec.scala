@@ -17,9 +17,22 @@ import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService, Futu
 
 class HelloServiceSpec extends AsyncWordSpec with Matchers with BeforeAndAfterEach with PatienceConfiguration {
 
-  class TestHelloApplication(context: LagomApplicationContext) extends HelloApplication(context) with LocalServiceLocator {
+  /**
+   * An application with mocked JMS endpoints.
+   */
+  class TestHelloApplication(context: LagomApplicationContext)
+      extends HelloApplication(context) with LocalServiceLocator {
 
+    /**
+     * Everytime a JMS Source is created, it is added to this queue.
+     * In normal usage, this will normally only happen once.
+     */
     lazy val jmsSourceQueues = new LinkedBlockingDeque[SourceQueueWithComplete[String]]
+
+    /**
+     * Everytime a JMS Sink is created, it is added to this queue.
+     * In normal usage, this will normally only happen once.
+     */
     lazy val jmsSinkQueues = new LinkedBlockingDeque[SinkQueueWithCancel[String]]
 
     override def helloJmsSource: HelloJmsSourceFactory = new HelloJmsSourceFactory {
@@ -36,6 +49,8 @@ class HelloServiceSpec extends AsyncWordSpec with Matchers with BeforeAndAfterEa
       }
     }
   }
+
+  // State used by each test
 
   private var server: TestServer[TestHelloApplication] = _
   private var testThreadPool: ExecutionContextExecutorService = _
@@ -55,9 +70,12 @@ class HelloServiceSpec extends AsyncWordSpec with Matchers with BeforeAndAfterEa
     server = null
   }
 
+  // Helpers to access test state
+
   private def application: TestHelloApplication = server.application
   private def client = server.serviceClient.implement[HelloService]
 
+  /** Helper to get a message that has been sent to the JMS Sink */
   def getSentMessage(): Future[String] = {
     for {
       sinkQueue <- Future {
@@ -73,6 +91,7 @@ class HelloServiceSpec extends AsyncWordSpec with Matchers with BeforeAndAfterEa
     } yield optMessage.get
   }
 
+  /** Helper to put a message onto the JMS Source, simulating a receive */
   def putReceivedMessage(message: String): Future[Unit] = {
     for {
       sourceQueue <- Future {
@@ -94,6 +113,7 @@ class HelloServiceSpec extends AsyncWordSpec with Matchers with BeforeAndAfterEa
   "Hello service" should {
 
     "say hello" in {
+      // Check that the service call to read a greeting works properly
       client.hello("Alice").invoke().map { answer =>
         answer should ===("Hello, Alice!")
       }
@@ -101,9 +121,12 @@ class HelloServiceSpec extends AsyncWordSpec with Matchers with BeforeAndAfterEa
 
     "send a JMS message when updating with a custom greeting" in {
       for {
+        // Make a service call
         _ <- client.useGreeting("Bob").invoke(GreetingMessage("Hi"))
+        // Capture the message that the service call sends
         updateString <- getSentMessage()
       } yield {
+        // Check that the message parses to the correct value
         val updateJson = Json.parse(updateString)
         val errorOrUpdate = updateJson.validate[UpdateGreetingMessage].asEither
         errorOrUpdate should ===(Right(UpdateGreetingMessage("Bob", "Hi")))

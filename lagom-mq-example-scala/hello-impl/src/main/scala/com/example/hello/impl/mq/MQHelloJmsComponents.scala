@@ -2,23 +2,36 @@ package com.example.hello.impl.mq
 
 import akka.stream.alpakka.jms.scaladsl.{JmsSink, JmsSource}
 import akka.stream.alpakka.jms.{Credentials, JmsSinkSettings, JmsSourceSettings}
-import com.example.hello.impl.HelloJmsComponents.{RunSink, RunSource}
+import com.example.hello.impl.HelloJmsSinkFactory.RunSink
+import com.example.hello.impl.HelloJmsSourceFactory.RunSource
 import com.example.hello.impl.{HelloJmsComponents, HelloJmsSinkFactory, HelloJmsSourceFactory}
 import com.ibm.mq.jms.MQQueueConnectionFactory
 import com.ibm.msg.client.wmq.common.CommonConstants
 import play.api.{BuiltInComponents, Configuration}
 
+/**
+ * JMS components used by the Hello service and backed by IBM MQ.
+ *
+ * This trait is mixed into [[com.example.hello.impl.HelloApplication]]
+ * to implement [[HelloJmsComponents]].
+ */
 trait MQHelloJmsComponents extends HelloJmsComponents {
   self: BuiltInComponents =>
 
+  /**
+   * The settings that are used when we create a source or sink. These
+   * settings are read once and cached.
+   *
+   * Since they share a lot of logic we initialize them together.
+   */
   private lazy val (sourceSettings, sinkSettings) = {
 
     // Read configuration
     val mqConfig = configuration.get[Configuration]("hello.mq")
     val queueManager = mqConfig.get[String]("queue-manager")
     val channel = mqConfig.get[String]("channel")
-    val username = configuration.get[String]("username")
-    val password = configuration.get[String]("password")
+    val username = mqConfig.get[String]("username")
+    val password = mqConfig.get[String]("password")
     val queue = mqConfig.get[String]("queue")
 
     // Create the connection factory

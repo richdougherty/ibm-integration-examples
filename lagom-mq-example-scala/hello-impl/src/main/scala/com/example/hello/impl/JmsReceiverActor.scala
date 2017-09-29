@@ -6,7 +6,7 @@ import akka.pattern.pipe
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import akka.{Done, NotUsed}
-import com.example.hello.impl.HelloJmsComponents.RunSource
+import com.example.hello.impl.HelloJmsSourceFactory.RunSource
 import org.slf4j.LoggerFactory
 import play.api.libs.json.{JsError, JsSuccess, JsValue, Json}
 
