@@ -8,21 +8,14 @@ import scala.concurrent.Future
 import scala.util.control.NonFatal
 
 /**
- * A handler for messages that come in over MQ.
- */
-trait MQReceiveHandler {
-  def handleGreetingUpdate(id: String, newMessage: String): Future[Done]
-}
-
-/**
  * Handles received MQ messages by updating a persistent entity.
  *
  * @param persistentEntityRegistry
  */
-class UpdatePersistentEntityMQReceiveHandler(
-    persistentEntityRegistry: PersistentEntityRegistry) extends MQReceiveHandler {
+class JmsUpdateReceiver(
+    persistentEntityRegistry: PersistentEntityRegistry) {
   private val logger = LoggerFactory.getLogger(getClass)
-  override def handleGreetingUpdate(id: String, newMessage: String): Future[Done] = {
+  def handleGreetingUpdate(id: String, newMessage: String): Future[Done] = {
     try {
       logger.info(s"Updating entity '$id' with message '$newMessage'.")
       val ref = persistentEntityRegistry.refFor[HelloEntity](id) // TODO: Get id from message

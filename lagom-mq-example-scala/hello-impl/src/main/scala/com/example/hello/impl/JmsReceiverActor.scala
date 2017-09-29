@@ -1,17 +1,12 @@
 package com.example.hello.impl
 
-import javax.jms.{Message, TextMessage}
-
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.cluster.singleton.{ClusterSingletonManager, ClusterSingletonManagerSettings}
 import akka.pattern.pipe
 import akka.stream.Materializer
-import akka.stream.alpakka.jms.scaladsl.JmsSource
-import akka.stream.alpakka.jms.{Credentials, JmsSourceSettings}
 import akka.stream.scaladsl.{Sink, Source}
 import akka.{Done, NotUsed}
-import com.ibm.mq.jms.MQQueueConnectionFactory
-import com.ibm.msg.client.wmq.common.CommonConstants
+import com.example.hello.impl.HelloJmsComponents.RunSource
 import org.slf4j.LoggerFactory
 import play.api.libs.json.{JsError, JsSuccess, JsValue, Json}
 
@@ -19,16 +14,19 @@ import scala.concurrent.Future
 import scala.util.control.NonFatal
 
 /**
- * An MQListenerActor is responsible for listening to an MQ message queue
- * and invoking an [[MQReceiveHandler]].
+ * This actor is responsible for listening for JMS messages
+ * and invoking an [[JmsUpdateReceiver]].
  *
- * @param mqConfiguration The configuration used to create the MQ connection.
- * @param receiveHandler This will handle each message received.
+ * @param jmsSourceFactory Used to create the source for sending JMS messages.
+ * @param messageHandler This will handle each message received.
  * @param materializer This is used to materialize the stream.
  */
-class MQListenerActor(mqConfiguration: MQConfiguration, receiveHandler: MQReceiveHandler, materializer: Materializer) extends Actor {
+class JmsReceiverActor(
+    jmsSourceFactory: HelloJmsSourceFactory,
+    messageHandler: JmsUpdateReceiver,
+    materializer: Materializer) extends Actor {
 
-  import MQListenerActor._
+  import JmsReceiverActor._
 
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -42,29 +40,21 @@ class MQListenerActor(mqConfiguration: MQConfiguration, receiveHandler: MQReceiv
   override def preStart(): Unit = {
     logger.info("preStart called: creating MQ JmsSource")
 
-    val jmsSource: Source[Message, NotUsed] = {
-      val queueConnectionFactory = new MQQueueConnectionFactory()
-      queueConnectionFactory.setQueueManager(mqConfiguration.queueManager)
-      queueConnectionFactory.setChannel(mqConfiguration.channel)
-      // Try to use a native (shared memory) connection if possible,
-      // otherwise fall back to using the TCP client connection.
-      queueConnectionFactory.setTransportType(CommonConstants.WMQ_CM_BINDINGS_THEN_CLIENT)
-      val credentials = Credentials(mqConfiguration.username, mqConfiguration.password)
-      val sourceSettings = JmsSourceSettings(queueConnectionFactory).withQueue(mqConfiguration.queue).withCredential(credentials)
-      JmsSource(sourceSettings)
-    }
+    jmsSourceFactory.createJmsSource(new RunSource {
+      override def apply[T](source: Source[String, T]): T = {
+        logger.info("preStart called: creating Sink.actorRefWithAck")
 
-    logger.info("preStart called: creating Sink.actorRefWithAck")
+        val actorSink: Sink[String, NotUsed] = Sink.actorRefWithAck[String](self,
+          onInitMessage = StreamInit,
+          ackMessage = StreamAck,
+          onCompleteMessage = StreamComplete,
+          onFailureMessage = StreamFailure
+        )
 
-    val actorSink: Sink[Message, NotUsed] = Sink.actorRefWithAck[Message](self,
-      onInitMessage = StreamInit,
-      ackMessage = StreamAck,
-      onCompleteMessage = StreamComplete,
-      onFailureMessage = StreamFailure
-    )
-
-    logger.info("preStart called: creating stream from JmsSource to Sink.actorRefWithAck")
-    jmsSource.to(actorSink).run()(materializer)
+        logger.info("preStart called: creating stream from JmsSource to Sink.actorRefWithAck")
+        source.to(actorSink).run()(materializer)
+      }
+    })
   }
 
   /**
@@ -96,11 +86,11 @@ class MQListenerActor(mqConfiguration: MQConfiguration, receiveHandler: MQReceiv
   }
 
   /**
-   * The receive handler used when waiting for MQ [[Message]]s from upstream.
+   * The receive handler used when waiting for JMS messages from upstream.
    */
   private def waitingForMessage: Receive = {
     // Messages sent by Sink.actorRefWithAck
-    case message: Message =>
+    case message: String =>
       logger.info("Received message: processing")
       context.become(processingMessage(sender()), discardOld = true)
       pipe(handleMessage(message)).pipeTo(self)
@@ -118,11 +108,11 @@ class MQListenerActor(mqConfiguration: MQConfiguration, receiveHandler: MQReceiv
   }
 
   /**
-   * The receive handler used when processing an MQ [[Message]] received
+   * The receive handler used when processing a JMS message received
    * from upstream.
    *
    * @param streamSender The upstream sender that originally sent the
-   *                   MQ [[Message]]. We pass this parameter because
+   *                   JMS message. We pass this parameter because
    *                   the sender that sends the next (non-MQ) message,
    *                   e.g. [[Done]], might not be the original sender.
    */
@@ -151,8 +141,8 @@ class MQListenerActor(mqConfiguration: MQConfiguration, receiveHandler: MQReceiv
   }
 
   /**
-   * The receive handler used when processing an MQ [[Message]] and then
-   * stopping. This might happen if we receive an MQ `Message` but then
+   * The receive handler used when processing a JMS message and then
+   * stopping. This might happen if we receive a JMS message but then
    * we're given a reason to stop, e.g. if the upstream stream is closed
    * or if we're asked to stop by the [[ClusterSingletonManager]].
    *
@@ -179,20 +169,18 @@ class MQListenerActor(mqConfiguration: MQConfiguration, receiveHandler: MQReceiv
   }
 
   /**
-   * Handle a message that is received. This decodes the raw [[Message]],
+   * Handle a message that is received. This decodes the raw JMS message string,
    * getting JSON [[JsValue]], decoding it to an [[UpdateGreetingMessage]]
-   * then calling the [[MQReceiveHandler]].
+   * then calling the [[JmsUpdateReceiver]].
    */
-  private def handleMessage(message: Message): Future[Done] = {
+  private def handleMessage(messageString: String): Future[Done] = {
     try {
-      logger.info(s"Processing message received over MQ.")
-      val updateString: String = message.asInstanceOf[TextMessage].getText
-      logger.info(s"Received JMS message: $updateString")
-      val updateJson: JsValue = Json.parse(updateString)
+      logger.info(s"Received JMS message: $messageString")
+      val updateJson: JsValue = Json.parse(messageString)
       Json.fromJson[UpdateGreetingMessage](updateJson) match {
         case JsSuccess(UpdateGreetingMessage(id, newMessage), _) =>
           logger.info(s"Message parsed as UseGreetingMessageForId($id, $newMessage).")
-          receiveHandler.handleGreetingUpdate(id, newMessage)
+          messageHandler.handleGreetingUpdate(id, newMessage)
         case error: JsError =>
           throw new Exception(s"Failed to parse JavaScript: $error")
       }
@@ -204,53 +192,52 @@ class MQListenerActor(mqConfiguration: MQConfiguration, receiveHandler: MQReceiv
   }
 }
 
-object MQListenerActor {
+object JmsReceiverActor {
 
   /**
-   * This message is sent by the [[ClusterSingletonManager]] to the [[MQListenerActor]]
+   * This message is sent by the [[ClusterSingletonManager]] to the [[JmsReceiverActor]]
    * when it is time to terminate.
    */
   case object ClusterSingletonTerminate
 
   /**
-   * This message is sent by [[Sink.actorRefWithAck()]] to the [[MQListenerActor]]
+   * This message is sent by [[Sink.actorRefWithAck()]] to the [[JmsReceiverActor]]
    * when the stream is being initialized.
    */
   case object StreamInit
 
   /**
-   * This message is a reply from the [[MQListenerActor]] to acknowledge a message
+   * This message is a reply from the [[JmsReceiverActor]] to acknowledge a message
    * sent by [[Sink.actorRefWithAck()]]. This message is used to control backpressure;
    * the [[Sink]] will wait until it gets acknowledgement before proceeding.
    */
   case object StreamAck
 
   /**
-   * This message is sent by [[Sink.actorRefWithAck()]] to the [[MQListenerActor]]
+   * This message is sent by [[Sink.actorRefWithAck()]] to the [[JmsReceiverActor]]
    * when the stream is completed successfully.
    */
   case object StreamComplete
 
   /**
-   * This message is sent by [[Sink.actorRefWithAck()]] to the [[MQListenerActor]]
+   * This message is sent by [[Sink.actorRefWithAck()]] to the [[JmsReceiverActor]]
    * when the stream is completed with failure.
    */
   case class StreamFailure(t: Throwable)
 
   /**
-   * A class which initializes the [[MQListenerActor]] singleton. We use a
-   * class for initialization instead of a simple function because we want
-   * to call this from the [[HelloLoader]] using dependency injection.
+   * Creates a ClusterSingletonManager actor and asks it to manage the
+   * [[JmsReceiverActor]] as a cluster singleton.
    */
-  class SingletonInitializer(
-      mqConfiguration: MQConfiguration,
-      mqHandler: MQReceiveHandler,
+  def startWithClusterSingletonManager(
+      jmsSourceFactory: HelloJmsSourceFactory,
+      messageHandler: JmsUpdateReceiver,
       actorSystem: ActorSystem,
       materializer: Materializer) {
 
-    private val logger = LoggerFactory.getLogger(getClass)
+    val logger = LoggerFactory.getLogger(getClass)
 
-    logger.info(s"Starting ClusterSingletonManager to run ${classOf[MQListenerActor].getSimpleName} as a cluster singleton")
+    logger.info(s"Starting ClusterSingletonManager to run ${classOf[JmsReceiverActor].getSimpleName} as a cluster singleton")
 
     // Start a ClusterSingletonManager actor. This actor will communicate with
     // its peers on the cluster and decide on one cluster member to run the
@@ -258,7 +245,7 @@ object MQListenerActor {
     // the node running the MQListenerActor may change.
     actorSystem.actorOf(
       ClusterSingletonManager.props(
-        singletonProps = Props(classOf[MQListenerActor], mqConfiguration, mqHandler, materializer),
+        singletonProps = Props(classOf[JmsReceiverActor], jmsSourceFactory, messageHandler, materializer),
         terminationMessage = ClusterSingletonTerminate,
         settings = ClusterSingletonManagerSettings(actorSystem)),
       name = "mq-listener-cluster-singleton-manager")

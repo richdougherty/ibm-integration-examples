@@ -13,7 +13,7 @@ import scala.concurrent.ExecutionContext
 /**
   * Implementation of the HelloService.
   */
-class HelloServiceImpl(persistentEntityRegistry: PersistentEntityRegistry, mqSender: MQSender, ec: ExecutionContext) extends HelloService {
+class HelloServiceImpl(persistentEntityRegistry: PersistentEntityRegistry, mqSender: JmsUpdateSender, ec: ExecutionContext) extends HelloService {
 
   override def hello(id: String) = ServiceCall { _ =>
     // Look up the Hello entity for the given ID.

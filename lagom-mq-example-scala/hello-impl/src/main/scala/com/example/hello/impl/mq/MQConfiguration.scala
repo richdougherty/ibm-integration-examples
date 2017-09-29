@@ -1,4 +1,4 @@
-package com.example.hello.impl
+package com.example.hello.impl.mq
 
 import org.slf4j.LoggerFactory
 import play.api.Configuration
@@ -16,13 +16,12 @@ object MQConfiguration {
   private val logger = LoggerFactory.getLogger(getClass)
 
   def parse(configuration: Configuration): MQConfiguration = {
-    val base = configuration.get[Configuration]("hello.mq")
     val mqConfiguration = MQConfiguration(
-      queueManager = base.get[String]("queue-manager"),
-      channel = base.get[String]("channel"),
-      queue = base.get[String]("queue"),
-      username = base.get[String]("username"),
-      password = base.get[String]("password")
+      queueManager = configuration.get[String]("queue-manager"),
+      channel = configuration.get[String]("channel"),
+      queue = configuration.get[String]("queue"),
+      username = configuration.get[String]("username"),
+      password = configuration.get[String]("password")
     )
     logger.info(s"Parsed MQConfiguration: $mqConfiguration")
     mqConfiguration
