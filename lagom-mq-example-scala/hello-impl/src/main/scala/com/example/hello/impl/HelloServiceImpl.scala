@@ -16,7 +16,7 @@ import scala.concurrent.ExecutionContext
   */
 class HelloServiceImpl(
     persistentEntityRegistry: PersistentEntityRegistry,
-    mqSender: HelloJmsSender)(
+    jmsSender: HelloJmsSender)(
     implicit ec: ExecutionContext) extends HelloService {
 
   override def hello(id: String) = ServiceCall { _ =>
@@ -28,7 +28,10 @@ class HelloServiceImpl(
   }
 
   override def useGreeting(id: String) = ServiceCall { request =>
-    mqSender.sendGreetingUpdate(id, request.message).map(_ => Done)(ec)
+    // We've been asked to change the greeting. Send the update information
+    // over JMS. (The update will eventually be processed by the
+    // HelloJmsReceiverActor.)
+    jmsSender.sendGreetingUpdate(id, request.message)
   }
   override def greetingsTopic(): Topic[api.GreetingMessageChanged] =
     TopicProducer.singleStreamWithOffset {

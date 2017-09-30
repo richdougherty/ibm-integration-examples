@@ -35,7 +35,6 @@ trait HelloJmsSourceFactory {
 }
 
 object HelloJmsSourceFactory {
-
   /**
    * This is a function to run a [[Source]]. It will connect the source to a
    * stream, materialize the stream and return the source's materialized value.
@@ -46,8 +45,6 @@ object HelloJmsSourceFactory {
   trait RunSource[T] {
     def apply[Mat](source: Source[String, Mat]): (Mat, T)
   }
-
-
 }
 
 /**
@@ -63,7 +60,6 @@ trait HelloJmsSinkFactory {
 }
 
 object HelloJmsSinkFactory {
-
   /**
    * This is a function to run a [[Sink]]. It will connect the sink to a
    * stream, materialize the stream and return the sink's materialized value.
@@ -74,5 +70,4 @@ object HelloJmsSinkFactory {
   trait RunSink[T] {
     def apply[Mat](sink: Sink[String, Mat]): (Mat, T)
   }
-
 }
