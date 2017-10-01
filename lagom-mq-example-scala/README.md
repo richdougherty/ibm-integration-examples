@@ -26,7 +26,7 @@ functionality.
 1.  [Prerequisites](#prerequisites)
 2.  [Set up IBM MQ](#set-up-ibm-mq)
 3.  [Download and set up the Lagom service](#download-and-set-up-the-lagom-service)
-4.  [Download and install the IBM MQ driver](#download-and-install-the-ibm-mq-jdbc-driver)
+4.  [Download and install the IBM MQ driver](#download-and-install-the-ibm-mq-driver)
 5.  [Start the Lagom service](#start-the-lagom-service)
 6.  [Test the Lagom service](#test-the-lagom-service)
 7.  [Stop the Lagom service](#stop-the-lagom-service-and-docker)
@@ -109,6 +109,9 @@ Once the service has started you'll see a message like:
 ```
 (Service started, press enter to stop and go back to the console...)
 ```
+
+Note: If you wish to change the MQ settings used by the application,
+you can edit the values in the `application.conf` configuration file.
 
 ## Test the Lagom service
 
