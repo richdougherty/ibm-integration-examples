@@ -2,8 +2,7 @@ package com.example.hello.impl.jms
 
 import akka.stream.alpakka.jms.scaladsl.{JmsSink, JmsSource}
 import akka.stream.alpakka.jms.{Credentials, JmsSinkSettings, JmsSourceSettings}
-import com.example.hello.impl.jms.HelloJmsSinkFactory.RunSink
-import com.example.hello.impl.jms.HelloJmsSourceFactory.RunSource
+import akka.stream.scaladsl.{Keep, Sink, Source}
 import com.ibm.mq.jms.MQQueueConnectionFactory
 import com.ibm.msg.client.wmq.common.CommonConstants
 import play.api.{BuiltInComponents, Configuration}
@@ -55,13 +54,15 @@ trait MQHelloJmsComponents extends HelloJmsComponents {
   }
 
   override def helloJmsSource: HelloJmsSourceFactory = new HelloJmsSourceFactory {
-    override def createJmsSource[T](run: RunSource[T]): T = {
-      run(JmsSource.textSource(sourceSettings))._2
+    override def createJmsSource[T](toSink: Sink[String,T]): T = {
+      val jmsSource = JmsSource.textSource(sourceSettings)
+      jmsSource.toMat(toSink)(Keep.right).run()(materializer)
     }
   }
   override def helloJmsSink: HelloJmsSinkFactory = new HelloJmsSinkFactory {
-    override def createJmsSink[T](run: RunSink[T]): T = {
-      run(JmsSink.textSink(sinkSettings))._2
+    override def createJmsSink[T](fromSource: Source[String,T]): T = {
+      val jmsSink = JmsSink.textSink(sinkSettings)
+      fromSource.toMat(jmsSink)(Keep.left).run()(materializer)
     }
   }
 }

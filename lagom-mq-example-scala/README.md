@@ -1,3 +1,5 @@
+# Lagom integration with IBM MQ
+
 [IBM MQ](http://www.ibm.com/software/products/en/ibm-mq) is messaging middleware
 that can be used to connect applications and business data across diverse platforms.
 [Lagom](https://www.lagomframework.com/) applications can conveniently integrate with
@@ -7,19 +9,17 @@ This example project implements a simple "hello, world" service that can store
 custom per-user greetings. Greetings are stored using Lagom's [Persistent Entities](https://www.lagomframework.com/documentation/1.4.x/scala/ES_CQRS.html).
 Changes to greetings are sent over IBM MQ before being processed.
 
-For simplicity, this service implements both sending, receiving and processing
-messages greeting update messages within a single service. In practice, MQ
-message queues would often be used to integrate separate services, with one
-service sending messages and another service receiving and processing the
-messages.
+In practice, MQ message queues are often be used to integrate multiple
+services, with one service sending messages and another service receiving
+and processing the messages. For simplicity, this demonstration uses a
+single service to handle both sending and receiving MQ messages.
 
 Lagom applications can be run as a cluster. In this demonstration application, every node in
 the cluster can send MQ messages, but only a single node will receive MQ messages.
 Using a single node for receiving messages is beneficial because it simplifies issues of
-ordering when processing messages. The complicated details about how to choose a single node
-for reading and how to handle node failure and migration are handled automatically by
-[Akka's Cluster Singleton](http://doc.akka.io/docs/akka/current/scala/cluster-singleton.html)
-functionality.
+ordering when processing messages. [Akka's Cluster Singleton](http://doc.akka.io/docs/akka/current/scala/cluster-singleton.html)
+feature automatically manages the process of selecting a node to run the reader logic
+and migrating to another node in the cluster in the event of failure.
 
 ## Table of Contents
 
@@ -78,6 +78,13 @@ Follow these steps to get a local copy of this project. You can supply the crede
     cd lagom-mq-example-scala
     ```
 
+By default, the example Lagom service is configured to connect to the MQ Docker
+image running on localhost using its [default settings](https://github.com/ibm-messaging/mq-docker#mq-developer-defaults).
+You do not need to change these settings if you are using the default Docker
+image. If you do wish to use different MQ settings you can change them in the
+Lagom service's `application.conf` configuration file. The settings are documented
+in the comments in that file.
+
 ## Download and install the MQ client driver
 
 To build and run the Lagom service, you will need to make the MQ client library available
@@ -92,6 +99,7 @@ in your build.
 6. Extract the MQ client JAR files and copy them into the `mq-client/lib` directory
    ```
    $ jar xf 9.0.0.1-IBM-MQC-Redist-Java.zip java/lib/{com.ibm.mq.allclient.jar,jms.jar}
+   $ mkdir -p mq-client/lib
    $ cp java/lib/* mq-client/lib
    $ rm -ri java/lib
    ```
@@ -109,9 +117,6 @@ Once the service has started you'll see a message like:
 ```
 (Service started, press enter to stop and go back to the console...)
 ```
-
-Note: If you wish to change the MQ settings used by the application,
-you can edit the values in the `application.conf` configuration file.
 
 ## Test the Lagom service
 

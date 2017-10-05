@@ -2,11 +2,9 @@ package com.example.hello.impl
 
 import java.util.concurrent.{Executors, LinkedBlockingDeque, TimeUnit}
 
-import akka.stream.scaladsl.{Sink, SinkQueueWithCancel, Source, SourceQueueWithComplete}
+import akka.stream.scaladsl.{Keep, Sink, SinkQueueWithCancel, Source, SourceQueueWithComplete}
 import akka.stream.{OverflowStrategy, QueueOfferResult}
 import com.example.hello.api._
-import com.example.hello.impl.jms.HelloJmsSinkFactory.RunSink
-import com.example.hello.impl.jms.HelloJmsSourceFactory.RunSource
 import com.example.hello.impl.jms.{HelloJmsSinkFactory, HelloJmsSourceFactory, UpdateGreetingMessage}
 import com.lightbend.lagom.scaladsl.server.{LagomApplicationContext, LocalServiceLocator}
 import com.lightbend.lagom.scaladsl.testkit.ServiceTest
@@ -38,18 +36,20 @@ class HelloServiceSpec extends AsyncWordSpec with Matchers with BeforeAndAfterEa
     lazy val jmsSinkQueues = new LinkedBlockingDeque[SinkQueueWithCancel[String]]
 
     override def helloJmsSource: HelloJmsSourceFactory = new HelloJmsSourceFactory {
-      override def createJmsSource[T](run: RunSource[T]): T = {
-        val (queue, result) = run(Source.queue[String](0, OverflowStrategy.backpressure))
-        jmsSourceQueues.putLast(queue)
-        result
+      override def createJmsSource[T](toSink: Sink[String,T]): T = {
+        val jmsSource = Source.queue[String](0, OverflowStrategy.backpressure)
+        val (queue, sinkMat) = jmsSource.toMat(toSink)(Keep.both).run()(materializer)
+        jmsSourceQueues.putLast(queue) // Make the materialized queue available to tests
+        sinkMat
       }
     }
 
     override def helloJmsSink: HelloJmsSinkFactory = new HelloJmsSinkFactory {
-      override def createJmsSink[T](run: RunSink[T]): T = {
-        val (queue, result) = run(Sink.queue[String]())
-        jmsSinkQueues.putLast(queue)
-        result
+      override def createJmsSink[T](fromSource: Source[String,T]): T = {
+        val jmsSink = Sink.queue[String]()
+        val (sourceMat, queue) = fromSource.toMat(jmsSink)(Keep.both).run()(materializer)
+        jmsSinkQueues.putLast(queue) // Make the materialized queue available to tests
+        sourceMat
       }
     }
   }
