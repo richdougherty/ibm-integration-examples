@@ -8,6 +8,8 @@ val alpakka = "com.lightbend.akka" %% "akka-stream-alpakka-jms" % "0.12"
 val macwire = "com.softwaremill.macwire" %% "macros" % "2.2.5" % "provided"
 val scalaTest = "org.scalatest" %% "scalatest" % "3.0.1" % Test
 
+val akkaStream = "com.typesafe.akka" %% "akka-stream" % "2.5.6"
+
 lazy val `hello` = (project in file("."))
   .aggregate(`hello-api`, `hello-impl`)
 
